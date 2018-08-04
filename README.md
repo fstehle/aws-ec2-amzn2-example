@@ -10,6 +10,13 @@ make vpc STAGE=dev
 
 ### Make some requests
 
+Get the endpoint of the load balancer:
+```
+export STAGE=dev AWS_REGION=eu-central-1
+./awsinfo.sh cfn outputs --region ${AWS_REGION} aws-ec2-amzn2-example-${STAGE}-ec2
+```
+
+Make some requests
 ```
 $ curl ....eu-central-1.elb.amazonaws.com
 ```
@@ -18,5 +25,5 @@ $ curl ....eu-central-1.elb.amazonaws.com
 
 ```
 export STAGE=dev AWS_REGION=eu-central-1
-awsinfo logs --region ${AWS_REGION} -G -s "-5minutes" aws-ec2-amzn2-example-${STAGE}-ec2/service
+./awsinfo.sh logs --region ${AWS_REGION} -G -s "-5minutes" aws-ec2-amzn2-example-${STAGE}-ec2/service
 ```

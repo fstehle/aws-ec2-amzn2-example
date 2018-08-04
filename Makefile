@@ -34,10 +34,6 @@ deploy-ec2: $(AWS) guard-STAGE guard-AWS_REGION
 		--parameter-overrides Service=$(SERVICE) \
 		                      Stage=$(STAGE) \
 		                      VpcStack=$(VPC_STACK_NAME)
-	echo "Use the following DNS name to connect"
-	@$(AWS) cloudformation describe-stacks --stack-name $(EC2_STACK_NAME) \
-		--region $(AWS_REGION) --output text \
-		--query 'Stacks[0].Outputs[?OutputKey == `LoadBalancerDNSName`].OutputValue'
 
 .PHONY: deploy
 deploy: vpc deploy-ec2
