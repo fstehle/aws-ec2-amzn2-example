@@ -1,0 +1,405 @@
+Description: EC2 stack for aws-ec2-amzn2-example
+Parameters:
+  Stage:
+    Description: 'Stage/Enviroment'
+    Type: String
+  Service:
+    Description: 'Service identifier'
+    Type: String
+  VpcStack:
+    Description: 'Stack name of parent VPC stack based on vpc/vpc-*azs.yaml template.'
+    Type: String
+  EC2InstanceType:
+    Description: 'The instance type of the EC2 instance (e.g. t2.micro).'
+    Type: String
+    Default: 't2.nano'
+  EC2LogsRetentionInDays:
+    Description: 'Specifies the number of days you want to retain log events.'
+    Type: Number
+    Default: 14
+    AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653]
+Mappings:
+  RegionMap:
+    'ap-south-1':
+      AMI: 'ami-d783a9b8'
+    'eu-west-3':
+      AMI: 'ami-2cf54551'
+    'eu-west-2':
+      AMI: 'ami-b8b45ddf'
+    'eu-west-1':
+      AMI: 'ami-466768ac'
+    'ap-northeast-2':
+      AMI: 'ami-afd86dc1'
+    'ap-northeast-1':
+      AMI: 'ami-e99f4896'
+    'sa-east-1':
+      AMI: 'ami-6dca9001'
+    'ca-central-1':
+      AMI: 'ami-0ee86a6a'
+    'ap-southeast-1':
+      AMI: 'ami-05868579'
+    'ap-southeast-2':
+      AMI: 'ami-39f8215b'
+    'eu-central-1':
+      AMI: 'ami-7c4f7097'
+    'us-east-1':
+      AMI: 'ami-b70554c8'
+    'us-east-2':
+      AMI: 'ami-8c122be9'
+    'us-west-1':
+      AMI: 'ami-e0ba5c83'
+    'us-west-2':
+      AMI: 'ami-a9d09ed1'
+Resources:
+  SystemLogs:
+    Type: 'AWS::Logs::LogGroup'
+    Properties:
+      LogGroupName: !Sub '${Service}-${Stage}-ec2/system'
+      RetentionInDays: !Ref EC2LogsRetentionInDays
+  ServiceLogs:
+    Type: 'AWS::Logs::LogGroup'
+    Properties:
+      LogGroupName: !Sub '${Service}-${Stage}-ec2/service'
+      RetentionInDays: !Ref EC2LogsRetentionInDays
+  EC2InstanceProfile:
+    Type: 'AWS::IAM::InstanceProfile'
+    Properties:
+      Path: '/'
+      Roles:
+        - !Ref EC2IAMRole
+  EC2IAMRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+              - 'ec2.amazonaws.com'
+          Action:
+            - 'sts:AssumeRole'
+      Path: '/'
+      ManagedPolicyArns: ['arn:aws:iam::aws:policy/service-role/AmazonEC2RoleforSSM']
+      Policies:
+      - PolicyName: logs
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+              - 'logs:CreateLogGroup'
+              - 'logs:CreateLogStream'
+              - 'logs:PutLogEvents'
+              - 'logs:DescribeLogStreams'
+            Resource:
+              - 'arn:aws:logs:*:*:*'
+      - PolicyName: iam
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+              - 'iam:ListUsers'
+            Resource:
+              - '*'
+          - Effect: Allow
+            Action:
+              - 'iam:ListSSHPublicKeys'
+              - 'iam:GetSSHPublicKey'
+            Resource:
+              - !Sub 'arn:aws:iam::${AWS::AccountId}:user/*'
+  EC2SecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: !Sub '${Service}-${Stage}-ec2'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: '0.0.0.0/0'
+        - IpProtocol: tcp
+          FromPort: 8000
+          ToPort: 8000
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
+      VpcId:
+        'Fn::ImportValue': !Sub '${VpcStack}-VPC'
+      Tags:
+        - Key: Name
+          Value: !Sub '${Service}-${Stage}'
+  ALBSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: !Sub '${Service}-${Stage}-lb'
+      VpcId:
+        'Fn::ImportValue': !Sub '${VpcStack}-VPC'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: '0.0.0.0/0'
+      Tags:
+        - Key: Name
+          Value: !Sub '${Service}-${Stage}-lb'
+  ALBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 60
+      UnhealthyThresholdCount: 3
+      HealthCheckPath: /
+      Name: !Sub '${Service}-${Stage}'
+      Port: 8000
+      Protocol: HTTP
+      VpcId:
+        'Fn::ImportValue': !Sub '${VpcStack}-VPC'
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: 60
+  ALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn:
+            Ref: ALBTargetGroup
+      LoadBalancerArn:
+        Ref: ALB
+      Port: 80
+      Protocol: HTTP
+  ALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub '${Service}-${Stage}'
+      SecurityGroups:
+        - !Ref ALBSecurityGroup
+      Subnets:
+        'Fn::Split':
+        - ','
+        - 'Fn::ImportValue': !Sub '${VpcStack}-Subnets'
+  AutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      LaunchConfigurationName: !Ref LaunchConfiguration
+      MinSize: 1
+      MaxSize: 3
+      DesiredCapacity: 2
+      Cooldown: 60
+      HealthCheckGracePeriod: 300
+      HealthCheckType: ELB
+      TargetGroupARNs:
+        - !Ref ALBTargetGroup
+      VPCZoneIdentifier:
+        - ','
+        - 'Fn::ImportValue':
+            !Sub '${VpcStack}-Subnets'
+      Tags:
+        - PropagateAtLaunch: true
+          Key: Name
+          Value: !Sub '${Service}-${Stage}'
+    CreationPolicy:
+      ResourceSignal:
+        Timeout: PT10M
+    UpdatePolicy:
+      AutoScalingRollingUpdate:
+        MinInstancesInService: 1
+        PauseTime: PT10M
+        SuspendProcesses:
+          - HealthCheck
+          - ReplaceUnhealthy
+          - AZRebalance
+          - AlarmNotification
+          - ScheduledActions
+        WaitOnResourceSignals: true
+  LaunchConfiguration:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      AssociatePublicIpAddress: true
+      IamInstanceProfile: !Ref EC2InstanceProfile
+      ImageId: !FindInMap [RegionMap, !Ref 'AWS::Region', AMI]
+      InstanceType: !Ref EC2InstanceType
+      SecurityGroups:
+        - !Ref EC2SecurityGroup
+      UserData:
+        'Fn::Base64':
+          'Fn::Sub': |
+            #cloud-config
+            repo_update: true
+            repo_upgrade: all
+            packages:
+              - awslogs
+              - python3
+            write_files:
+              - path: /tmp/awscli.conf
+                content: |
+                  [default]
+                  region = ${AWS::Region}
+                  [plugins]
+                  cwlogs = cwlogs
+                permissions: '0644'
+                owner: root:root
+              - path: /etc/awslogs/awslogs.conf
+                content: |
+                  [general]
+                  state_file = /var/lib/awslogs/agent-state
+                  [/var/log/amazon/ssm/amazon-ssm-agent.log]
+                  datetime_format = %Y-%m-%d %H:%M:%S
+                  file = /var/log/amazon/ssm/amazon-ssm-agent.log
+                  log_stream_name = {instance_id}/var/log/amazon/ssm/amazon-ssm-agent.log
+                  log_group_name = ${SystemLogs}
+                  [/var/log/amazon/ssm/errors.log]
+                  datetime_format = %Y-%m-%d %H:%M:%S
+                  file = /var/log/amazon/ssm/errors.log
+                  log_stream_name = {instance_id}/var/log/amazon/ssm/errors.log
+                  log_group_name = ${SystemLogs}
+                  [/var/log/audit/audit.log]
+                  file = /var/log/audit/audit.log
+                  log_stream_name = {instance_id}/var/log/audit/audit.log
+                  log_group_name = ${SystemLogs}
+                  [/var/log/awslogs.log]
+                  datetime_format = %Y-%m-%d %H:%M:%S
+                  file = /var/log/awslogs.log
+                  log_stream_name = {instance_id}/var/log/awslogs.log
+                  log_group_name = ${SystemLogs}
+                  [/var/log/boot.log]
+                  file = /var/log/boot.log
+                  log_stream_name = {instance_id}/var/log/boot.log
+                  log_group_name = ${SystemLogs}
+                  [/var/log/cfn-init-cmd.log]
+                  datetime_format = %Y-%m-%d %H:%M:%S
+                  file = /var/log/cfn-init-cmd.log
+                  log_stream_name = {instance_id}/var/log/cfn-init-cmd.log
+                  log_group_name = ${SystemLogs}
+                  [/var/log/cfn-init.log]
+                  datetime_format = %Y-%m-%d %H:%M:%S
+                  file = /var/log/cfn-init.log
+                  log_stream_name = {instance_id}/var/log/cfn-init.log
+                  log_group_name = ${SystemLogs}
+                  [/var/log/cfn-wire.log]
+                  datetime_format = %Y-%m-%d %H:%M:%S
+                  file = /var/log/cfn-wire.log
+                  log_stream_name = {instance_id}/var/log/cfn-wire.log
+                  log_group_name = ${SystemLogs}
+                  [/var/log/cloud-init-output.log]
+                  file = /var/log/cloud-init-output.log
+                  log_stream_name = {instance_id}/var/log/cloud-init-output.log
+                  log_group_name = ${SystemLogs}
+                  [/var/log/cloud-init.log]
+                  datetime_format = %b %d %H:%M:%S
+                  file = /var/log/cloud-init.log
+                  log_stream_name = {instance_id}/var/log/cloud-init.log
+                  log_group_name = ${SystemLogs}
+                  [/var/log/cron]
+                  datetime_format = %b %d %H:%M:%S
+                  file = /var/log/cron
+                  log_stream_name = {instance_id}/var/log/cron
+                  log_group_name = ${SystemLogs}
+                  [/var/log/dmesg]
+                  file = /var/log/dmesg
+                  log_stream_name = {instance_id}/var/log/dmesg
+                  log_group_name = ${SystemLogs}
+                  [/var/log/grubby_prune_debug]
+                  file = /var/log/grubby_prune_debug
+                  log_stream_name = {instance_id}/var/log/grubby_prune_debug
+                  log_group_name = ${SystemLogs}
+                  [/var/log/maillog]
+                  datetime_format = %b %d %H:%M:%S
+                  file = /var/log/maillog
+                  log_stream_name = {instance_id}/var/log/maillog
+                  log_group_name = ${SystemLogs}
+                  [/var/log/messages]
+                  datetime_format = %b %d %H:%M:%S
+                  file = /var/log/messages
+                  log_stream_name = {instance_id}/var/log/messages
+                  log_group_name = ${SystemLogs}
+                  [/var/log/secure]
+                  datetime_format = %b %d %H:%M:%S
+                  file = /var/log/secure
+                  log_stream_name = {instance_id}/var/log/secure
+                  log_group_name = ${SystemLogs}
+                  [/var/log/yum.log]
+                  datetime_format = %b %d %H:%M:%S
+                  file = /var/log/yum.log
+                  log_stream_name = {instance_id}/var/log/yum.log
+                  log_group_name = ${SystemLogs}
+                  [/var/log/${Service}.log]
+                  file = /var/log/${Service}.log
+                  log_stream_name = {instance_id}/var/log/${Service}.log
+                  log_group_name = ${ServiceLogs}
+                permissions: '0644'
+                owner: root:root
+              - path: /opt/${Service}/env
+                owner: root:root
+                permissions: '0644'
+                content: |
+                  SERVICE=${Service}
+                  STAGE=${Stage}
+                  PORT_NUMBER=8000
+                  PYTHONUNBUFFERED=1
+              - path: /opt/${Service}/main.py
+                owner: root:root
+                permissions: '0644'
+                content: |
+                  from http.server import BaseHTTPRequestHandler,HTTPServer
+                  import os
+
+                  PORT_NUMBER = int(os.environ['PORT_NUMBER'])
+                  STAGE = os.environ['STAGE']
+                  SERVICE = os.environ['SERVICE']
+
+                  class myHandler(BaseHTTPRequestHandler):
+                    def do_GET(self):
+                      self.send_response(200)
+                      self.send_header('Content-type','text/html')
+                      self.end_headers()
+                      self.wfile.write(bytes("Hello from {}!".format(SERVICE), "utf8"))
+                      return
+
+                  try:
+                    server = HTTPServer(('', PORT_NUMBER), myHandler)
+                    print('Started httpserver on port {}'.format(PORT_NUMBER))
+                    server.serve_forever()
+
+                  except KeyboardInterrupt:
+                    print('^C received, shutting down the web server')
+                    server.socket.close()
+              - path: /usr/lib/systemd/system/${Service}.service
+                owner: root:root
+                permissions: '0644'
+                content: |
+                  [Unit]
+                  Description=${Service}
+                  Requires=amazon-ssm-agent.service
+                  After=syslog.target amazon-ssm-agent.service
+
+                  [Service]
+                  EnvironmentFile=/opt/${Service}/env
+                  Type=simple
+                  WorkingDirectory=/opt/${Service}/
+                  User=${Service}
+                  ExecStart=/usr/bin/python3 /opt/${Service}/main.py
+                  Restart=always
+                  RestartSec=30
+                  SyslogIdentifier=${Service}
+
+                  [Install]
+                  WantedBy=multi-user.target
+              - path: /etc/rsyslog.d/${Service}.conf
+                owner: root:root
+                permissions: '0644'
+                content: |
+                  :programname, isequal, "${Service}" /var/log/${Service}.log
+                  & stop
+            runcmd:
+              - /usr/bin/cp /tmp/awscli.conf /etc/awslogs/awscli.conf
+              - /usr/bin/systemctl start awslogsd
+              - /usr/bin/systemctl restart rsyslog
+              - /usr/sbin/useradd --system ${Service}
+              - /usr/bin/systemctl enable ${Service}.service
+              - /usr/bin/systemctl start ${Service}.service
+              - /opt/aws/bin/cfn-signal -e 0 --stack ${AWS::StackName} --resource AutoScalingGroup --region ${AWS::Region}
+Outputs:
+  LoadBalancerDNSName:
+    Description: 'The DNS name for the load balancer'
+    Value: !GetAtt ALB.DNSName
+    Export:
+      Name: !Sub '${AWS::StackName}-LoadBalancerDNSName'
