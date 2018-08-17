@@ -18,6 +18,10 @@ Parameters:
     Type: Number
     Default: 14
     AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653]
+  ServicePort:
+    Description: 'Port number of the service.'
+    Type: Number
+    Default: 8000
 Mappings:
   RegionMap:
     'ap-south-1':
@@ -119,8 +123,8 @@ Resources:
           ToPort: 22
           CidrIp: '0.0.0.0/0'
         - IpProtocol: tcp
-          FromPort: 8000
-          ToPort: 8000
+          FromPort: !Ref ServicePort
+          ToPort: !Ref ServicePort
           SourceSecurityGroupId: !Ref ALBSecurityGroup
       VpcId:
         'Fn::ImportValue': !Sub '${VpcStack}-VPC'
@@ -148,7 +152,7 @@ Resources:
       UnhealthyThresholdCount: 3
       HealthCheckPath: /
       Name: !Sub '${Service}-${Stage}'
-      Port: 8000
+      Port: !Ref ServicePort
       Protocol: HTTP
       VpcId:
         'Fn::ImportValue': !Sub '${VpcStack}-VPC'
@@ -333,7 +337,7 @@ Resources:
                 content: |
                   SERVICE=${Service}
                   STAGE=${Stage}
-                  PORT_NUMBER=8000
+                  SERVICE_PORT=${ServicePort}
                   PYTHONUNBUFFERED=1
               - path: /opt/${Service}/main.py
                 owner: root:root
@@ -342,7 +346,7 @@ Resources:
                   from http.server import BaseHTTPRequestHandler,HTTPServer
                   import os
 
-                  PORT_NUMBER = int(os.environ['PORT_NUMBER'])
+                  SERVICE_PORT = int(os.environ['SERVICE_PORT'])
                   STAGE = os.environ['STAGE']
                   SERVICE = os.environ['SERVICE']
 
@@ -355,8 +359,8 @@ Resources:
                       return
 
                   try:
-                    server = HTTPServer(('', PORT_NUMBER), myHandler)
-                    print('Started httpserver on port {}'.format(PORT_NUMBER))
+                    server = HTTPServer(('', SERVICE_PORT), myHandler)
+                    print('Started httpserver on port {}'.format(SERVICE_PORT))
                     server.serve_forever()
 
                   except KeyboardInterrupt:
