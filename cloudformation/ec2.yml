@@ -331,6 +331,22 @@ Resources:
                   log_group_name = ${ServiceLogs}
                 permissions: '0644'
                 owner: root:root
+              - path: /usr/bin/cfn-signal.sh
+                content: |
+                  #!/bin/bash
+                  counter=1
+                  while ! curl -sf http://localhost:${ServicePort}/; do
+                    sleep 5
+                    counter=`expr $counter + 1`
+                    if [ $counter -gt 10 ]; then
+                      # Healthcheck was not successful
+                      /opt/aws/bin/cfn-signal -e 1 --stack ${AWS::StackName} --resource AutoScalingGroup --region ${AWS::Region}
+                      exit 1
+                    fi;
+                  done
+                  /opt/aws/bin/cfn-signal -e 0 --stack ${AWS::StackName} --resource AutoScalingGroup --region ${AWS::Region}
+                permissions: '0500'
+                owner: root:root
               - path: /opt/${Service}/env
                 owner: root:root
                 permissions: '0644'
@@ -400,7 +416,7 @@ Resources:
               - /usr/sbin/useradd --system ${Service}
               - /usr/bin/systemctl enable ${Service}.service
               - /usr/bin/systemctl start ${Service}.service
-              - /opt/aws/bin/cfn-signal -e 0 --stack ${AWS::StackName} --resource AutoScalingGroup --region ${AWS::Region}
+              - /usr/bin/cfn-signal.sh
 Outputs:
   LoadBalancerDNSName:
     Description: 'The DNS name for the load balancer'
