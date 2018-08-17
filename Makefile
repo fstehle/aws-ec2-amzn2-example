@@ -19,21 +19,16 @@ vpc: $(AWS) guard-STAGE guard-AWS_REGION
 	$(AWS) cloudformation deploy --stack-name $(VPC_STACK_NAME) \
 		--template-file cloudformation/vpc.yml --capabilities CAPABILITY_NAMED_IAM \
 		--region $(AWS_REGION) --no-fail-on-empty-changeset \
-		--tags Service=$(SERVICE) \
-		       Stage=$(STAGE) \
-		--parameter-overrides Service=$(SERVICE) \
-		                      Stage=$(STAGE)
+		--tags Service=$(SERVICE) Stage=$(STAGE) \
+		--parameter-overrides Service=$(SERVICE) Stage=$(STAGE)
 
 .PHONY: deploy-ec2
 deploy-ec2: $(AWS) guard-STAGE guard-AWS_REGION
 	$(AWS) cloudformation deploy --stack-name $(EC2_STACK_NAME) \
 		--template-file cloudformation/ec2.yml --capabilities CAPABILITY_NAMED_IAM \
 		--region $(AWS_REGION) --no-fail-on-empty-changeset \
-		--tags Service=$(SERVICE) \
-		       Stage=$(STAGE) \
-		--parameter-overrides Service=$(SERVICE) \
-		                      Stage=$(STAGE) \
-		                      VpcStack=$(VPC_STACK_NAME)
+		--tags Service=$(SERVICE) Stage=$(STAGE) \
+		--parameter-overrides Service=$(SERVICE) Stage=$(STAGE) VpcStack=$(VPC_STACK_NAME)
 
 .PHONY: deploy
 deploy: vpc deploy-ec2
