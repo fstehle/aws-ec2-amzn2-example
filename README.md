@@ -18,7 +18,7 @@ export STAGE=dev AWS_REGION=eu-central-1
 
 Make some requests
 ```
-$ curl ....eu-central-1.elb.amazonaws.com
+$ curl .....elb.amazonaws.com
 ```
 
 ### Get service logs
