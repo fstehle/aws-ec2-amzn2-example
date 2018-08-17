@@ -8,7 +8,7 @@ Example project for an EC2 autoscaling setup using Amazon Linux 2 and systemd.
 make deploy STAGE=dev AWS_REGION=eu-central-1
 ```
 
-### Make some requests
+## Make some requests
 
 Get the endpoint of the load balancer:
 ```
@@ -21,7 +21,7 @@ Make some requests
 $ curl .....elb.amazonaws.com
 ```
 
-### Get service logs
+## Get service logs
 
 ```
 export STAGE=dev AWS_REGION=eu-central-1
