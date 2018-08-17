@@ -1,11 +1,11 @@
 # aws-ec2-amzn2-example
 
-Example project for an EC2 autoscaling setup with Amazon Linux 2
+Example project for an EC2 autoscaling setup using Amazon Linux 2 and systemd.
 
 ## Deployment
 
 ```
-make vpc STAGE=dev
+make deploy STAGE=dev AWS_REGION=eu-central-1
 ```
 
 ### Make some requests
